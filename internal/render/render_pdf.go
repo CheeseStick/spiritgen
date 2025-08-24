@@ -32,8 +32,9 @@ const (
 	spiritTabletLabelFontFilePath = "assets/fonts/NotoSerifKR-Black.ttf"
 
 	// 위패 용지 글자 간격 설정 (mm)
-	spiritTabletLabelCharVerticalHeight    = 5.0
-	spiritTabletLabelTextHorizontalSpacing = 2.0
+	spiritTabletLabelCharVerticalHeight       = 5.0
+	spiritTabletLabelSpaceVerticalHeightRatio = 1.5
+	spiritTabletLabelTextHorizontalSpacing    = 2.0
 )
 
 func FromSpiritTablets(tablets []model.SpiritTablet, outputPath string) error {
@@ -98,26 +99,26 @@ func renderTablet(pdf *fpdf.Fpdf, tablet model.SpiritTablet, startX, startY floa
 		cursorY := startY + spiritTabletLabelPaddingTop
 		name := strings.Join([]string{d.DharmaName, d.Name}, " ")
 
-		renderVerticalText(pdf, fmt.Sprintf("%s 靈駕", name), cursorX, endY, spiritTabletLabelCharVerticalHeight, true)
+		renderVerticalText(pdf, fmt.Sprintf("%s 靈駕", name), cursorX, endY, spiritTabletLabelCharVerticalHeight, spiritTabletLabelSpaceVerticalHeightRatio, true)
 
-		renderVerticalText(pdf, "망", cursorX, cursorY, spiritTabletLabelCharVerticalHeight, false)
+		renderVerticalText(pdf, "망", cursorX, cursorY, spiritTabletLabelCharVerticalHeight, spiritTabletLabelSpaceVerticalHeightRatio, false)
 		cursorY += spiritTabletLabelCharVerticalHeight * 1.5
 
-		renderVerticalText(pdf, d.Relation, cursorX, cursorY, spiritTabletLabelCharVerticalHeight, false)
-		cursorY += spiritTabletLabelCharVerticalHeight * 4.5
+		renderVerticalText(pdf, d.Relation, cursorX, cursorY, spiritTabletLabelCharVerticalHeight, spiritTabletLabelSpaceVerticalHeightRatio, false)
+		cursorY += spiritTabletLabelCharVerticalHeight * 5.25
 
 		if 0 < len(d.ClanOrigin) {
-			renderVerticalText(pdf, d.ClanOrigin, cursorX, cursorY, spiritTabletLabelCharVerticalHeight, false)
+			renderVerticalText(pdf, d.ClanOrigin, cursorX, cursorY, spiritTabletLabelCharVerticalHeight, spiritTabletLabelSpaceVerticalHeightRatio, false)
 		}
 
 		cursorX += textColumnWidth + spiritTabletLabelTextHorizontalSpacing
 	}
 
 	cursorX += textColumnWidth + spiritTabletLabelTextHorizontalSpacing
-	renderVerticalText(pdf, fmt.Sprintf("%s 伏爲", tablet.PresentedBy), cursorX, endY, spiritTabletLabelCharVerticalHeight, true)
+	renderVerticalText(pdf, fmt.Sprintf("%s 伏爲", tablet.PresentedBy), cursorX, endY, spiritTabletLabelCharVerticalHeight, spiritTabletLabelSpaceVerticalHeightRatio, true)
 }
 
-func renderVerticalText(pdf *fpdf.Fpdf, text string, startX, startY, charVerticalHeight float64, reversed bool) {
+func renderVerticalText(pdf *fpdf.Fpdf, text string, startX, startY, charVerticalHeight, emptyCharHeightRatio float64, reversed bool) {
 	runes := []rune(text)
 	length := len(runes)
 
@@ -130,14 +131,22 @@ func renderVerticalText(pdf *fpdf.Fpdf, text string, startX, startY, charVertica
 
 		for i := length; 0 < i; i-- {
 			pdf.Text(startX, y, string(runes[i-1]))
-			y -= charVerticalHeight
+			if runes[i-1] == ' ' {
+				y -= charVerticalHeight / emptyCharHeightRatio
+			} else {
+				y -= charVerticalHeight
+			}
 		}
 	} else {
 		y := startY + charVerticalHeight
 
 		for _, r := range runes {
 			pdf.Text(startX, y, string(r))
-			y += charVerticalHeight
+			if r == ' ' {
+				y += charVerticalHeight / emptyCharHeightRatio
+			} else {
+				y += charVerticalHeight
+			}
 		}
 	}
 }

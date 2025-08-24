@@ -62,7 +62,7 @@ func main() {
 	}
 
 	// Generate PDF
-	err = render.FromSpiritTablets(result.Success, outputPath)
+	err = render.FromSpiritTablets(spiritTablets, outputPath)
 	if err != nil {
 		log.Fatalf("❌ PDF 생성 실패: %v", err)
 	}
