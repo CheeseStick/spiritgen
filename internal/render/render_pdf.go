@@ -2,7 +2,9 @@ package render
 
 import (
 	"codeberg.org/go-pdf/fpdf"
+	"fmt"
 	"spiritgen/internal/model"
+	"strings"
 )
 
 const (
@@ -16,11 +18,12 @@ const (
 	spiritTabletBackgroundImageFilePath = "assets/images/background.jpg"
 
 	// 위패 용지 간 마진 (mm)
-	spiritTabletLabelMarginX = 8.0
+	spiritTabletLabelMarginX = 4.0
 
 	// 위패 용지 내 패딩 (mm)
-	spiritTabletLabelPaddingX = 14.0
-	spiritTabletLabelPaddingY = 18.0
+	spiritTabletLabelPaddingX      = 14.0
+	spiritTabletLabelPaddingTop    = 34.0
+	spiritTabletLabelPaddingBottom = 36.0
 
 	// 위패 용지 폰트 설정
 	spiritTabletLabelFontName     = "Noto Serif KR Black"
@@ -33,7 +36,7 @@ const (
 	spiritTabletLabelTextHorizontalSpacing = 2.0
 )
 
-func RenderLabelsAsPDF(labels []model.RenderedSpiritTabletLabel, outputPath string) error {
+func FromSpiritTablets(tablets []model.SpiritTablet, outputPath string) error {
 	pdf := fpdf.New("L", "mm", "A4", "")
 
 	// Register assets
@@ -53,7 +56,7 @@ func RenderLabelsAsPDF(labels []model.RenderedSpiritTabletLabel, outputPath stri
 	// Cursor
 	cursorX := a4PaperMarginX
 
-	for _, label := range labels {
+	for _, s := range tablets {
 		// Calculate next content ending X
 		nextContentEndX := cursorX + spiritTabletLabelWidth + spiritTabletLabelMarginX
 
@@ -64,8 +67,8 @@ func RenderLabelsAsPDF(labels []model.RenderedSpiritTabletLabel, outputPath stri
 			cursorX = a4PaperMarginX
 		}
 
-		// Render Label
-		renderLabel(pdf, label, cursorX, a4PaperMarginY)
+		// Render tablet
+		renderTablet(pdf, s, cursorX, a4PaperMarginY)
 
 		// Update cursor
 		cursorX += spiritTabletLabelWidth + spiritTabletLabelMarginX
@@ -74,8 +77,8 @@ func RenderLabelsAsPDF(labels []model.RenderedSpiritTabletLabel, outputPath stri
 	return pdf.OutputFileAndClose(outputPath)
 }
 
-func renderLabel(pdf *fpdf.Fpdf, label model.RenderedSpiritTabletLabel, startX, startY float64) {
-	if len(label.DeceasedLabels) == 0 {
+func renderTablet(pdf *fpdf.Fpdf, tablet model.SpiritTablet, startX, startY float64) {
+	if len(tablet.DeceasedList) == 0 {
 		return
 	}
 
@@ -83,21 +86,35 @@ func renderLabel(pdf *fpdf.Fpdf, label model.RenderedSpiritTabletLabel, startX, 
 	pdf.Image(spiritTabletBackgroundImageFilePath, startX, startY, spiritTabletLabelWidth, spiritTabletLabelHeight, false, "JPG", -1, "")
 
 	endX := spiritTabletLabelWidth - (spiritTabletLabelPaddingX * 2)
-	endY := startY + (spiritTabletLabelHeight - (spiritTabletLabelPaddingY * 2))
+	endY := startY + spiritTabletLabelHeight - spiritTabletLabelPaddingBottom
 	textColumnWidth := (endX / 5) - spiritTabletLabelTextHorizontalSpacing
 	cursorX := startX + spiritTabletLabelPaddingX
 
-	if len(label.DeceasedLabels) < 3 {
-		cursorX += (textColumnWidth + spiritTabletLabelTextHorizontalSpacing) * float64(3-len(label.DeceasedLabels))
+	if len(tablet.DeceasedList) < 3 {
+		cursorX += (textColumnWidth + spiritTabletLabelTextHorizontalSpacing) * float64(3-len(tablet.DeceasedList))
 	}
 
-	for _, deceased := range label.DeceasedLabels {
-		renderVerticalText(pdf, deceased, cursorX, endY, spiritTabletLabelCharVerticalHeight, true)
+	for _, d := range tablet.DeceasedList {
+		cursorY := startY + spiritTabletLabelPaddingTop
+		name := strings.Join([]string{d.DharmaName, d.Name}, " ")
+
+		renderVerticalText(pdf, fmt.Sprintf("%s 靈駕", name), cursorX, endY, spiritTabletLabelCharVerticalHeight, true)
+
+		renderVerticalText(pdf, "망", cursorX, cursorY, spiritTabletLabelCharVerticalHeight, false)
+		cursorY += spiritTabletLabelCharVerticalHeight * 1.5
+
+		renderVerticalText(pdf, d.Relation, cursorX, cursorY, spiritTabletLabelCharVerticalHeight, false)
+		cursorY += spiritTabletLabelCharVerticalHeight * 4.5
+
+		if 0 < len(d.ClanOrigin) {
+			renderVerticalText(pdf, d.ClanOrigin, cursorX, cursorY, spiritTabletLabelCharVerticalHeight, false)
+		}
+
 		cursorX += textColumnWidth + spiritTabletLabelTextHorizontalSpacing
 	}
 
 	cursorX += textColumnWidth + spiritTabletLabelTextHorizontalSpacing
-	renderVerticalText(pdf, label.PresenterLabel, cursorX, endY, spiritTabletLabelCharVerticalHeight, true)
+	renderVerticalText(pdf, fmt.Sprintf("%s 伏爲", tablet.PresentedBy), cursorX, endY, spiritTabletLabelCharVerticalHeight, true)
 }
 
 func renderVerticalText(pdf *fpdf.Fpdf, text string, startX, startY, charVerticalHeight float64, reversed bool) {

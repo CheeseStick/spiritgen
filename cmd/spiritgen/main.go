@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"spiritgen/internal/model"
 	"spiritgen/internal/parser"
 	"spiritgen/internal/render"
 )
@@ -43,15 +44,23 @@ func main() {
 		log.Printf("⚠️ 일부 행에서 유효성 오류가 발생했습니다 (%d개). 무시하고 진행합니다.", len(result.Errors))
 	}
 
-	// Convert to rendered structure
-	rendered := render.FromSpiritTablets(result.Success)
-
 	// Determine output path
 	dir := filepath.Dir(*inputPath)
 	outputPath := filepath.Join(dir, *outputName)
 
+	// Split spirit tablets
+	spiritTablets := make([]model.SpiritTablet, 0, len(result.Success))
+
+	for _, tablet := range result.Success {
+		spiritTablets = append(spiritTablets, tablet.Split(3)...)
+	}
+
+	if len(spiritTablets) == 0 {
+		log.Fatalf("❌ 처리 할 데이터가 없습니다.")
+	}
+
 	// Generate PDF
-	err = render.RenderLabelsAsPDF(rendered, outputPath)
+	err = render.FromSpiritTablets(result.Success, outputPath)
 	if err != nil {
 		log.Fatalf("❌ PDF 생성 실패: %v", err)
 	}
