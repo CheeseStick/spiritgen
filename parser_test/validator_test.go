@@ -11,6 +11,7 @@ func TestValidatePresenter(t *testing.T) {
 		wantErrs int
 	}{
 		{"누군가", 0},
+		{"누 군가", 0},
 		{"   ", 1},
 		{"", 1},
 		{"\t", 1},

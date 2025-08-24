@@ -10,7 +10,7 @@ func NormalizeString(s string) string {
 
 	trimmed := strings.TrimSpace(s)
 	for _, r := range trimmed {
-		if !unicode.IsSpace(r) {
+		if !unicode.IsSpace(r) || r == ' ' {
 			b.WriteRune(r)
 		}
 	}

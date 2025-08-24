@@ -16,7 +16,7 @@ func TestParseFromXLSX(t *testing.T) {
 
 	t.Logf("Current working dir: %s", wd)
 
-	abs := filepath.Join(wd, "..", "testdata", "template.xlsx")
+	abs := filepath.Join(wd, "..", "testdata", "testdata.xlsx")
 	data, err := os.ReadFile(abs)
 	if err != nil {
 		t.Fatal(err)
