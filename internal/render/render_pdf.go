@@ -3,6 +3,7 @@ package render
 import (
 	"codeberg.org/go-pdf/fpdf"
 	"fmt"
+	"slices"
 	"spiritgen/internal/model"
 	"strings"
 )
@@ -94,6 +95,8 @@ func renderTablet(pdf *fpdf.Fpdf, tablet model.SpiritTablet, startX, startY floa
 	if len(tablet.DeceasedList) < 3 {
 		cursorX += (textColumnWidth + spiritTabletLabelTextHorizontalSpacing) * float64(3-len(tablet.DeceasedList))
 	}
+
+	slices.Reverse(tablet.DeceasedList)
 
 	for _, d := range tablet.DeceasedList {
 		cursorY := startY + spiritTabletLabelPaddingTop
