@@ -1,14 +1,14 @@
-package gui
+package lantern
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"spiritgen/assets"
-	"spiritgen/internal/model"
-	"spiritgen/internal/parser"
-	"spiritgen/internal/render"
 	"strings"
+
+	"spiritgen/assets"
+	"spiritgen/internal/gui"
+	"spiritgen/internal/validation"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -22,13 +22,37 @@ const (
 	designOptionTwo = "디자인 2"
 )
 
-func buildSpiritTabletTab(state *AppState, win fyne.Window) fyne.CanvasObject {
-	// File path — disabled Entry looks like a proper readonly field
+// uiState holds the runtime state of the lantern tab.
+type uiState struct {
+	xlsxPath       string
+	parseResult    *ParseResult
+	households     []Household
+	householdCount int
+	personCount    int
+	selectedDesign []byte
+	title          string
+}
+
+type tab struct {
+	state *uiState
+}
+
+// NewTab returns a freshly-initialized lantern tab implementing gui.Tab.
+func NewTab() gui.Tab {
+	return &tab{
+		state: &uiState{selectedDesign: assets.LanternTabletDesignOne},
+	}
+}
+
+func (t *tab) Title() string { return "인등/연등 생성" }
+
+func (t *tab) Build(win fyne.Window) fyne.CanvasObject {
+	state := t.state
+
 	pathEntry := widget.NewEntry()
 	pathEntry.SetPlaceHolder("xlsx 파일을 선택해주세요...")
 	pathEntry.Disable()
 
-	// Status shown after a successful read
 	statusLabel := widget.NewLabel("")
 	statusLabel.Alignment = fyne.TextAlignCenter
 	statusLabel.Hide()
@@ -41,8 +65,8 @@ func buildSpiritTabletTab(state *AppState, win fyne.Window) fyne.CanvasObject {
 	progressBar.Hide()
 
 	afterRead := func() {
-		if state.personCount > 0 {
-			statusLabel.SetText(fmt.Sprintf("✓  %d명 로드됨 · 총 %d장", state.personCount, len(state.tablets)))
+		if state.householdCount > 0 {
+			statusLabel.SetText(fmt.Sprintf("✓  %d세대 · %d명 로드됨", state.householdCount, state.personCount))
 			statusLabel.Show()
 		}
 	}
@@ -79,18 +103,40 @@ func buildSpiritTabletTab(state *AppState, win fyne.Window) fyne.CanvasObject {
 		openFilePicker(nil)
 	})
 
+	templateBtn := widget.NewButton("템플릿 저장", func() {
+		fd := dialog.NewFileSave(func(w fyne.URIWriteCloser, err error) {
+			if err != nil || w == nil {
+				return
+			}
+			defer w.Close()
+			if _, writeErr := w.Write(assets.LanternTabletTemplate); writeErr != nil {
+				dialog.ShowError(writeErr, win)
+				return
+			}
+			dialog.ShowInformation("완료", "템플릿 파일이 저장되었습니다.", win)
+		}, win)
+		fd.SetFileName("lantern_tablet_template.xlsx")
+		fd.SetFilter(storage.NewExtensionFileFilter([]string{".xlsx"}))
+		fd.Show()
+	})
+	templateBtn.Importance = widget.LowImportance
+
 	designSelector := widget.NewRadioGroup(
 		[]string{designOptionOne, designOptionTwo},
 		func(selected string) {
 			if selected == designOptionTwo {
-				state.selectedDesign = assets.DesignTwo
+				state.selectedDesign = assets.LanternTabletDesignTwo
 			} else {
-				state.selectedDesign = assets.DesignOne
+				state.selectedDesign = assets.LanternTabletDesignOne
 			}
 		},
 	)
 	designSelector.SetSelected(designOptionOne)
 	designSelector.Horizontal = true
+
+	titleEntry := widget.NewEntry()
+	titleEntry.SetPlaceHolder("예: 동지기도, 부처님오신날 (비워두면 '뉴질랜드 남국선사')")
+	titleEntry.OnChanged = func(s string) { state.title = s }
 
 	generateBtn.OnTapped = func() {
 		generateBtn.Disable()
@@ -100,27 +146,10 @@ func buildSpiritTabletTab(state *AppState, win fyne.Window) fyne.CanvasObject {
 		showSaveDialog(state, readBtn, generateBtn, progressBar, win)
 	}
 
-	templateBtn := widget.NewButton("템플릿 저장", func() {
-		fd := dialog.NewFileSave(func(w fyne.URIWriteCloser, err error) {
-			if err != nil || w == nil {
-				return
-			}
-			defer w.Close()
-			if _, writeErr := w.Write(assets.SpiritPadTemplate); writeErr != nil {
-				dialog.ShowError(writeErr, win)
-				return
-			}
-			dialog.ShowInformation("완료", "템플릿 파일이 저장되었습니다.", win)
-		}, win)
-		fd.SetFileName("spirit_pad_template.xlsx")
-		fd.SetFilter(storage.NewExtensionFileFilter([]string{".xlsx"}))
-		fd.Show()
-	})
-	templateBtn.Importance = widget.LowImportance
-
 	fileRow := container.NewBorder(nil, nil, nil, browseBtn, pathEntry)
 	form := widget.NewForm(
 		widget.NewFormItem("파일", fileRow),
+		widget.NewFormItem("행사명", titleEntry),
 		widget.NewFormItem("디자인", designSelector),
 		widget.NewFormItem("", container.NewHBox(templateBtn)),
 	)
@@ -138,7 +167,7 @@ func buildSpiritTabletTab(state *AppState, win fyne.Window) fyne.CanvasObject {
 	return container.NewPadded(content)
 }
 
-func showSaveDialog(state *AppState, readBtn, generateBtn *widget.Button, progressBar *widget.ProgressBarInfinite, win fyne.Window) {
+func showSaveDialog(state *uiState, readBtn, generateBtn *widget.Button, progressBar *widget.ProgressBarInfinite, win fyne.Window) {
 	restoreButtons := func() {
 		progressBar.Stop()
 		progressBar.Hide()
@@ -147,7 +176,7 @@ func showSaveDialog(state *AppState, readBtn, generateBtn *widget.Button, progre
 	}
 
 	filenameEntry := widget.NewEntry()
-	filenameEntry.SetText("output.pdf")
+	filenameEntry.SetText("lantern_output.pdf")
 
 	folderLabel := widget.NewLabel("폴더를 선택해주세요")
 	var chosenFolder string
@@ -180,7 +209,7 @@ func showSaveDialog(state *AppState, readBtn, generateBtn *widget.Button, progre
 
 		filename := strings.TrimSpace(filenameEntry.Text)
 		if filename == "" {
-			filename = "output.pdf"
+			filename = "lantern_output.pdf"
 		}
 		if !strings.HasSuffix(strings.ToLower(filename), ".pdf") {
 			filename += ".pdf"
@@ -188,10 +217,11 @@ func showSaveDialog(state *AppState, readBtn, generateBtn *widget.Button, progre
 
 		outputPath := filepath.Join(chosenFolder, filename)
 		design := state.selectedDesign
+		title := state.title
 
 		doRender := func() {
 			go func() {
-				renderErr := render.FromSpiritTablets(state.tablets, outputPath, design)
+				renderErr := RenderPDF(state.households, outputPath, design, title)
 				restoreButtons()
 				if renderErr != nil {
 					dialog.ShowError(renderErr, win)
@@ -219,9 +249,9 @@ func showSaveDialog(state *AppState, readBtn, generateBtn *widget.Button, progre
 	}, win)
 }
 
-// DoRead parses the xlsx at state.xlsxPath and updates state.
-// Exported for testing. Returns without action if xlsxPath is empty.
-func DoRead(state *AppState, generateBtn *widget.Button, win fyne.Window) {
+// DoRead parses the xlsx at state.xlsxPath and updates state. Exported for
+// testing — returns without action if xlsxPath is empty.
+func DoRead(state *uiState, generateBtn *widget.Button, win fyne.Window) {
 	if state.xlsxPath == "" {
 		return
 	}
@@ -233,7 +263,7 @@ func DoRead(state *AppState, generateBtn *widget.Button, win fyne.Window) {
 	}
 	defer f.Close()
 
-	result, err := parser.ParseFromXLSX(f)
+	result, err := ParseXLSX(f)
 	if err != nil {
 		dialog.ShowError(fmt.Errorf("XLSX 파싱 실패: %w", err), win)
 		return
@@ -245,25 +275,25 @@ func DoRead(state *AppState, generateBtn *widget.Button, win fyne.Window) {
 	}
 
 	personCount := 0
-	for _, t := range result.Success {
-		personCount += len(t.DeceasedList)
-	}
-
-	tablets := make([]model.SpiritTablet, 0, len(result.Success))
-	for _, t := range result.Success {
-		tablets = append(tablets, t.Split(3)...)
+	for _, h := range result.Success {
+		personCount += len(h.Persons)
 	}
 
 	state.parseResult = &result
-	state.tablets = tablets
+	state.households = result.Success
+	state.householdCount = len(result.Success)
 	state.personCount = personCount
 
 	if len(result.Errors) > 0 {
-		dialog.ShowInformation("경고",
-			fmt.Sprintf("%d개 행에서 오류가 발생했습니다. 무시하고 진행합니다.", len(result.Errors)),
-			win)
+		showRowErrorWarning(result.Errors, win)
 	}
 
 	generateBtn.Enable()
-	dialog.ShowInformation("읽기 완료", fmt.Sprintf("%d명을 읽었습니다.", personCount), win)
+	dialog.ShowInformation("읽기 완료", fmt.Sprintf("%d세대 · %d명을 읽었습니다.", state.householdCount, personCount), win)
+}
+
+func showRowErrorWarning(errs []validation.RowError, win fyne.Window) {
+	dialog.ShowInformation("경고",
+		fmt.Sprintf("%d개 행에서 오류가 발생했습니다. 무시하고 진행합니다.", len(errs)),
+		win)
 }
