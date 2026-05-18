@@ -86,7 +86,16 @@ func ParseFromXLSX(r io.Reader) (ParseResult, error) {
 				DeceasedList: []model.Deceased{deceased},
 			}
 		} else if currentTablet != nil {
-			currentTablet.DeceasedList = append(currentTablet.DeceasedList, deceased)
+			// If the length is more than 3, create a new entry.
+			if 3 <= len(currentTablet.DeceasedList) {
+				result.Success = append(result.Success, *currentTablet)
+				currentTablet = &model.SpiritTablet{
+					PresentedBy:  currentTablet.PresentedBy,
+					DeceasedList: []model.Deceased{deceased},
+				}
+			} else {
+				currentTablet.DeceasedList = append(currentTablet.DeceasedList, deceased)
+			}
 		} else {
 			// First row missing presenter
 			result.Errors = append(result.Errors, RowValidationError{
