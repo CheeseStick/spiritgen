@@ -7,10 +7,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+
 	"spiritgen/assets"
-	"spiritgen/internal/model"
-	"spiritgen/internal/parser"
-	"spiritgen/internal/render"
+	"spiritgen/internal/spirittablet"
 )
 
 func main() {
@@ -27,19 +26,16 @@ func main() {
 		log.Fatal("❌ XLSX 파일이 필요합니다. --input <path> 또는 파일을 실행 파일 위로 드레 해주세요.")
 	}
 
-	// Validate input file
 	if _, err := os.Stat(inputPath); os.IsNotExist(err) {
 		log.Fatalf("❌ 파일이 존재하지 않습니다.: %s", inputPath)
 	}
 
-	// Read input XLSX
 	data, err := os.ReadFile(inputPath)
 	if err != nil {
 		log.Fatalf("❌ 데이터를 읽을 수 없습니다: %v", err)
 	}
 
-	// Parse XLSX to SpiritTablets
-	result, err := parser.ParseFromXLSX(bytes.NewReader(data))
+	result, err := spirittablet.ParseXLSX(bytes.NewReader(data))
 	if err != nil {
 		log.Fatalf("❌ XLSX 파일을 로드하는데 실패했습니다: %v", err)
 	}
@@ -51,20 +47,16 @@ func main() {
 	dir := filepath.Dir(inputPath)
 	outputPath := filepath.Join(dir, *outputName)
 
-	// Split spirit tablets
-	spiritTablets := make([]model.SpiritTablet, 0, len(result.Success))
-
+	tablets := make([]spirittablet.SpiritTablet, 0, len(result.Success))
 	for _, tablet := range result.Success {
-		spiritTablets = append(spiritTablets, tablet.Split(3)...)
+		tablets = append(tablets, tablet.Split(3)...)
 	}
 
-	if len(spiritTablets) == 0 {
+	if len(tablets) == 0 {
 		log.Fatalf("❌ 처리 할 데이터가 없습니다.")
 	}
 
-	// Generate PDF
-	err = render.FromSpiritTablets(spiritTablets, outputPath, assets.DesignOne)
-	if err != nil {
+	if err := spirittablet.RenderPDF(tablets, outputPath, assets.SpiritTabletDesignOne); err != nil {
 		log.Fatalf("❌ PDF 생성 실패: %v", err)
 	}
 

@@ -1,8 +1,9 @@
-package parser_test
+package spirittablet_test
 
 import (
-	"spiritgen/internal/parser"
 	"testing"
+
+	"spiritgen/internal/spirittablet"
 )
 
 func TestValidatePresenter(t *testing.T) {
@@ -21,7 +22,7 @@ func TestValidatePresenter(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		errs := parser.ValidatePresenter(tt.input)
+		errs := spirittablet.ValidatePresenter(tt.input)
 		if len(errs) != tt.wantErrs {
 			t.Errorf("ValidatePresenter(%q) = %d errors, want %d", tt.input, len(errs), tt.wantErrs)
 		}
@@ -63,7 +64,7 @@ func TestValidateDeceasedInput(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		errs := parser.ValidateDeceasedInput(tt.name, tt.dharma, tt.clan, tt.relation)
+		errs := spirittablet.ValidateDeceasedInput(tt.name, tt.dharma, tt.clan, tt.relation)
 		if len(errs) != tt.wantErrs {
 			t.Errorf("ValidateDeceasedInput(%q, %q, %q, %q) = %d errors, want %d",
 				tt.name, tt.dharma, tt.clan, tt.relation, len(errs), tt.wantErrs)

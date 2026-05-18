@@ -1,4 +1,4 @@
-package gui
+package spirittablet
 
 import (
 	"testing"
@@ -12,8 +12,8 @@ func TestGenerateButtonInitiallyDisabled(t *testing.T) {
 	defer a.Quit()
 	w := a.NewWindow("test")
 
-	state := &AppState{window: w}
-	buildSpiritTabletTab(state, w)
+	tb := &tab{state: &uiState{}}
+	tb.Build(w)
 
 	generateBtn := widget.NewButton("생성", nil)
 	generateBtn.Disable()
@@ -28,7 +28,7 @@ func TestReadEnablesGenerateButton(t *testing.T) {
 	defer a.Quit()
 	w := a.NewWindow("test")
 
-	state := &AppState{window: w}
+	state := &uiState{}
 	generateBtn := widget.NewButton("생성", nil)
 	generateBtn.Disable()
 
@@ -51,7 +51,7 @@ func TestReadWithInvalidPathKeepsButtonDisabled(t *testing.T) {
 	defer a.Quit()
 	w := a.NewWindow("test")
 
-	state := &AppState{window: w}
+	state := &uiState{}
 	generateBtn := widget.NewButton("생성", nil)
 	generateBtn.Disable()
 
@@ -71,7 +71,7 @@ func TestReadWithEmptyPathKeepsButtonDisabled(t *testing.T) {
 	defer a.Quit()
 	w := a.NewWindow("test")
 
-	state := &AppState{window: w}
+	state := &uiState{}
 	generateBtn := widget.NewButton("생성", nil)
 	generateBtn.Disable()
 
@@ -87,7 +87,7 @@ func TestReadResetsStateOnReread(t *testing.T) {
 	defer a.Quit()
 	w := a.NewWindow("test")
 
-	state := &AppState{window: w}
+	state := &uiState{}
 	generateBtn := widget.NewButton("생성", nil)
 	generateBtn.Disable()
 
@@ -101,7 +101,6 @@ func TestReadResetsStateOnReread(t *testing.T) {
 		t.Fatal("first read produced no persons")
 	}
 
-	// Re-read with the same file — state should be consistent
 	DoRead(state, generateBtn, w)
 
 	if state.personCount != firstCount {
