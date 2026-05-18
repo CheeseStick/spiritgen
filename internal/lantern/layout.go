@@ -36,10 +36,11 @@ const (
 const (
 	labelFontName = "Noto Serif KR Black"
 
-	// Title (centered at top when non-empty)
+	// Title (centered at top; defaults to defaultTitle when caller passes "")
 	titleFontSize     = 16.0
 	titleFontStyle    = "B"
 	titleBottomMargin = 4.0 // mm gap between title and body text
+	defaultTitle      = "뉴질랜드 남국선사"
 
 	// Address
 	addressFontSize  = 10.0

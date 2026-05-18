@@ -12,6 +12,10 @@ import (
 // rendered at the top center of every tablet — if empty, the title line is
 // skipped.
 func RenderPDF(households []Household, outputPath string, bgImage []byte, title string) error {
+	if title == "" {
+		title = defaultTitle
+	}
+
 	doc := pdf.NewA4Landscape(a4PaperMarginX, a4PaperMarginY)
 	// We only ship one TTF (NotoSerifKR-Black). Register it under both "B" and
 	// "" so SetFont calls with either style resolve to the same bytes.

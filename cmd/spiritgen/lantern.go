@@ -16,7 +16,7 @@ func runLantern(args []string) {
 	fs := flag.NewFlagSet("lantern", flag.ExitOnError)
 	inputFlag := fs.String("input", "", "XLSX 파일 경로")
 	outputName := fs.String("output", "lantern_output.pdf", "PDF 출력 파일 이름 (기본: lantern_output.pdf)")
-	titleFlag := fs.String("title", "", "행사명 (모든 tablet 상단에 동일하게 출력. 비우면 생략)")
+	titleFlag := fs.String("title", "", "행사명 (모든 tablet 상단에 동일하게 출력. 비우면 '뉴질랜드 남국선사')")
 	if err := fs.Parse(args); err != nil {
 		os.Exit(2)
 	}

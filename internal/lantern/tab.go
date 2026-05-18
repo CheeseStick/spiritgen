@@ -135,7 +135,7 @@ func (t *tab) Build(win fyne.Window) fyne.CanvasObject {
 	designSelector.Horizontal = true
 
 	titleEntry := widget.NewEntry()
-	titleEntry.SetPlaceHolder("예: 동지기도, 부처님오신날 (비워두면 생략)")
+	titleEntry.SetPlaceHolder("예: 동지기도, 부처님오신날 (비워두면 '뉴질랜드 남국선사')")
 	titleEntry.OnChanged = func(s string) { state.title = s }
 
 	generateBtn.OnTapped = func() {
