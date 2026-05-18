@@ -1,9 +1,11 @@
 package render
 
 import (
+	"bytes"
 	"codeberg.org/go-pdf/fpdf"
 	"fmt"
 	"slices"
+	"spiritgen/assets"
 	"spiritgen/internal/model"
 	"strings"
 )
@@ -14,23 +16,22 @@ const (
 	a4PaperMarginY = 16.0
 
 	// 위패 용지 사이즈 (mm)
-	spiritTabletLabelWidth              = 58.0
-	spiritTabletLabelHeight             = 184.0
-	spiritTabletBackgroundImageFilePath = "assets/images/background.jpg"
+	spiritTabletLabelWidth         = 58.0
+	spiritTabletLabelHeight        = 184.0
+	spiritTabletBackgroundImageKey = "background"
 
 	// 위패 용지 간 마진 (mm)
 	spiritTabletLabelMarginX = 4.0
 
 	// 위패 용지 내 패딩 (mm)
 	spiritTabletLabelPaddingX      = 14.0
-	spiritTabletLabelPaddingTop    = 34.0
-	spiritTabletLabelPaddingBottom = 36.0
+	spiritTabletLabelPaddingTop    = 33.0
+	spiritTabletLabelPaddingBottom = 27.0
 
 	// 위패 용지 폰트 설정
-	spiritTabletLabelFontName     = "Noto Serif KR Black"
-	spiritTabletLabelFontStyle    = "B"
-	spiritTabletLabelFontSize     = 14
-	spiritTabletLabelFontFilePath = "assets/fonts/NotoSerifKR-Black.ttf"
+	spiritTabletLabelFontName  = "Noto Serif KR Black"
+	spiritTabletLabelFontStyle = "B"
+	spiritTabletLabelFontSize  = 14
 
 	// 위패 용지 글자 간격 설정 (mm)
 	spiritTabletLabelCharVerticalHeight       = 5.0
@@ -38,12 +39,12 @@ const (
 	spiritTabletLabelTextHorizontalSpacing    = 2.0
 )
 
-func FromSpiritTablets(tablets []model.SpiritTablet, outputPath string) error {
+func FromSpiritTablets(tablets []model.SpiritTablet, outputPath string, bgImage []byte) error {
 	pdf := fpdf.New("L", "mm", "A4", "")
 
-	// Register assets
-	pdf.AddUTF8Font(spiritTabletLabelFontName, spiritTabletLabelFontStyle, spiritTabletLabelFontFilePath)
-	pdf.RegisterImage(spiritTabletBackgroundImageFilePath, "jpg")
+	// Register assets from embedded bytes
+	pdf.AddUTF8FontFromBytes(spiritTabletLabelFontName, spiritTabletLabelFontStyle, assets.FontNotoSerifKR)
+	pdf.RegisterImageOptionsReader(spiritTabletBackgroundImageKey, fpdf.ImageOptions{ImageType: "PNG"}, bytes.NewReader(bgImage))
 
 	// Setup page
 	pdf.SetMargins(a4PaperMarginX, a4PaperMarginY, -1)
@@ -85,7 +86,7 @@ func renderTablet(pdf *fpdf.Fpdf, tablet model.SpiritTablet, startX, startY floa
 	}
 
 	pdf.SetFont(spiritTabletLabelFontName, spiritTabletLabelFontStyle, spiritTabletLabelFontSize)
-	pdf.Image(spiritTabletBackgroundImageFilePath, startX, startY, spiritTabletLabelWidth, spiritTabletLabelHeight, false, "JPG", -1, "")
+	pdf.Image(spiritTabletBackgroundImageKey, startX, startY, spiritTabletLabelWidth, spiritTabletLabelHeight, false, "PNG", -1, "")
 
 	endX := spiritTabletLabelWidth - (spiritTabletLabelPaddingX * 2)
 	endY := startY + spiritTabletLabelHeight - spiritTabletLabelPaddingBottom

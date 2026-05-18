@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"spiritgen/assets"
 	"spiritgen/internal/model"
 	"spiritgen/internal/parser"
 	"spiritgen/internal/render"
@@ -62,7 +63,7 @@ func main() {
 	}
 
 	// Generate PDF
-	err = render.FromSpiritTablets(spiritTablets, outputPath)
+	err = render.FromSpiritTablets(spiritTablets, outputPath, assets.DesignOne)
 	if err != nil {
 		log.Fatalf("❌ PDF 생성 실패: %v", err)
 	}
