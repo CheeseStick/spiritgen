@@ -24,5 +24,5 @@ func BuildUI(w fyne.Window) {
 		container.NewTabItem("위패 생성", buildSpiritTabletTab(state, w)),
 	)
 	w.SetContent(tabs)
-	w.Resize(fyne.NewSize(580, 220))
+	w.Resize(fyne.NewSize(600, 260))
 }

@@ -23,14 +23,29 @@ const (
 )
 
 func buildSpiritTabletTab(state *AppState, win fyne.Window) fyne.CanvasObject {
-	pathLabel := widget.NewLabel("파일을 선택해주세요")
-	pathLabel.Truncation = fyne.TextTruncateEllipsis
+	// File path — disabled Entry looks like a proper readonly field
+	pathEntry := widget.NewEntry()
+	pathEntry.SetPlaceHolder("xlsx 파일을 선택해주세요...")
+	pathEntry.Disable()
+
+	// Status shown after a successful read
+	statusLabel := widget.NewLabel("")
+	statusLabel.Alignment = fyne.TextAlignCenter
+	statusLabel.Hide()
 
 	generateBtn := widget.NewButton("생성", nil)
+	generateBtn.Importance = widget.HighImportance
 	generateBtn.Disable()
 
 	progressBar := widget.NewProgressBarInfinite()
 	progressBar.Hide()
+
+	afterRead := func() {
+		if state.personCount > 0 {
+			statusLabel.SetText(fmt.Sprintf("✓  %d명 로드됨 · 총 %d장", state.personCount, len(state.tablets)))
+			statusLabel.Show()
+		}
+	}
 
 	openFilePicker := func(onSelected func()) {
 		fd := dialog.NewFileOpen(func(r fyne.URIReadCloser, err error) {
@@ -39,7 +54,7 @@ func buildSpiritTabletTab(state *AppState, win fyne.Window) fyne.CanvasObject {
 			}
 			defer r.Close()
 			state.xlsxPath = r.URI().Path()
-			pathLabel.SetText(state.xlsxPath)
+			pathEntry.SetText(state.xlsxPath)
 			if onSelected != nil {
 				onSelected()
 			}
@@ -52,10 +67,12 @@ func buildSpiritTabletTab(state *AppState, win fyne.Window) fyne.CanvasObject {
 		if state.xlsxPath == "" {
 			openFilePicker(func() {
 				DoRead(state, generateBtn, win)
+				afterRead()
 			})
 			return
 		}
 		DoRead(state, generateBtn, win)
+		afterRead()
 	})
 
 	browseBtn := widget.NewButton("파일 선택", func() {
@@ -83,14 +100,23 @@ func buildSpiritTabletTab(state *AppState, win fyne.Window) fyne.CanvasObject {
 		showSaveDialog(state, readBtn, generateBtn, progressBar, win)
 	}
 
-	fileRow := container.NewBorder(nil, nil, nil, browseBtn, pathLabel)
-	return container.NewVBox(
-		fileRow,
-		readBtn,
-		designSelector,
-		progressBar,
-		generateBtn,
+	fileRow := container.NewBorder(nil, nil, nil, browseBtn, pathEntry)
+	form := widget.NewForm(
+		widget.NewFormItem("파일", fileRow),
+		widget.NewFormItem("디자인", designSelector),
 	)
+
+	actionRow := container.NewGridWithColumns(2, readBtn, generateBtn)
+
+	content := container.NewVBox(
+		form,
+		widget.NewSeparator(),
+		statusLabel,
+		progressBar,
+		actionRow,
+	)
+
+	return container.NewPadded(content)
 }
 
 func showSaveDialog(state *AppState, readBtn, generateBtn *widget.Button, progressBar *widget.ProgressBarInfinite, win fyne.Window) {
