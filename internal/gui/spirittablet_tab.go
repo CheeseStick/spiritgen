@@ -100,10 +100,29 @@ func buildSpiritTabletTab(state *AppState, win fyne.Window) fyne.CanvasObject {
 		showSaveDialog(state, readBtn, generateBtn, progressBar, win)
 	}
 
+	templateBtn := widget.NewButton("템플릿 저장", func() {
+		fd := dialog.NewFileSave(func(w fyne.URIWriteCloser, err error) {
+			if err != nil || w == nil {
+				return
+			}
+			defer w.Close()
+			if _, writeErr := w.Write(assets.SpiritPadTemplate); writeErr != nil {
+				dialog.ShowError(writeErr, win)
+				return
+			}
+			dialog.ShowInformation("완료", "템플릿 파일이 저장되었습니다.", win)
+		}, win)
+		fd.SetFileName("spirit_pad_template.xlsx")
+		fd.SetFilter(storage.NewExtensionFileFilter([]string{".xlsx"}))
+		fd.Show()
+	})
+	templateBtn.Importance = widget.LowImportance
+
 	fileRow := container.NewBorder(nil, nil, nil, browseBtn, pathEntry)
 	form := widget.NewForm(
 		widget.NewFormItem("파일", fileRow),
 		widget.NewFormItem("디자인", designSelector),
+		widget.NewFormItem("", container.NewHBox(templateBtn)),
 	)
 
 	actionRow := container.NewGridWithColumns(2, readBtn, generateBtn)

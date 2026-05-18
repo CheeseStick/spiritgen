@@ -8,7 +8,7 @@ import (
 
 func main() {
 	a := app.New()
-	w := a.NewWindow("SpiritGen")
+	w := a.NewWindow("위패/인등/연등 생성 프로그램")
 	w.SetMaster()
 	gui.BuildUI(w)
 	w.ShowAndRun()
