@@ -1,64 +1,41 @@
+// spiritgen is the CLI front-end. It dispatches to subcommand handlers:
+//
+//	spiritgen tablet  --input <xlsx> --output <pdf>
+//	spiritgen lantern --input <xlsx> --output <pdf> --title <행사명>
 package main
 
 import (
-	"bytes"
-	"flag"
 	"fmt"
-	"log"
 	"os"
-	"path/filepath"
-
-	"spiritgen/assets"
-	"spiritgen/internal/spirittablet"
 )
 
 func main() {
-	inputFlag := flag.String("input", "", "XLSX 파일 경로 (또는 파일을 실행 파일 위로 드래그 하세요)")
-	outputName := flag.String("output", "output.pdf", "PDF 출력 파일 이름 (기본: output.pdf)")
-	flag.Parse()
-
-	inputPath := *inputFlag
-	if inputPath == "" && len(flag.Args()) > 0 {
-		inputPath = flag.Args()[0]
+	if len(os.Args) < 2 {
+		usage()
+		os.Exit(1)
 	}
 
-	if inputPath == "" {
-		log.Fatal("❌ XLSX 파일이 필요합니다. --input <path> 또는 파일을 실행 파일 위로 드레 해주세요.")
+	args := os.Args[2:]
+	switch os.Args[1] {
+	case "tablet":
+		runTablet(args)
+	case "lantern":
+		runLantern(args)
+	case "-h", "--help", "help":
+		usage()
+	default:
+		fmt.Fprintf(os.Stderr, "❌ 알 수 없는 명령어: %s\n\n", os.Args[1])
+		usage()
+		os.Exit(1)
 	}
+}
 
-	if _, err := os.Stat(inputPath); os.IsNotExist(err) {
-		log.Fatalf("❌ 파일이 존재하지 않습니다.: %s", inputPath)
-	}
-
-	data, err := os.ReadFile(inputPath)
-	if err != nil {
-		log.Fatalf("❌ 데이터를 읽을 수 없습니다: %v", err)
-	}
-
-	result, err := spirittablet.ParseXLSX(bytes.NewReader(data))
-	if err != nil {
-		log.Fatalf("❌ XLSX 파일을 로드하는데 실패했습니다: %v", err)
-	}
-
-	if 0 < len(result.Errors) {
-		log.Printf("⚠️ 일부 행에서 유효성 오류가 발생했습니다 (%d개). 무시하고 진행합니다.", len(result.Errors))
-	}
-
-	dir := filepath.Dir(inputPath)
-	outputPath := filepath.Join(dir, *outputName)
-
-	tablets := make([]spirittablet.SpiritTablet, 0, len(result.Success))
-	for _, tablet := range result.Success {
-		tablets = append(tablets, tablet.Split(3)...)
-	}
-
-	if len(tablets) == 0 {
-		log.Fatalf("❌ 처리 할 데이터가 없습니다.")
-	}
-
-	if err := spirittablet.RenderPDF(tablets, outputPath, assets.SpiritTabletDesignOne); err != nil {
-		log.Fatalf("❌ PDF 생성 실패: %v", err)
-	}
-
-	fmt.Printf("✅ PDF가 성공적으로 생성되었습니다: %s\n", outputPath)
+func usage() {
+	fmt.Fprintln(os.Stderr, "Usage: spiritgen <subcommand> [options]")
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "Subcommands:")
+	fmt.Fprintln(os.Stderr, "  tablet   영가위패 PDF 생성")
+	fmt.Fprintln(os.Stderr, "  lantern  인등/연등 PDF 생성")
+	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "각 서브커맨드의 옵션은 'spiritgen <subcommand> --help' 로 확인하세요.")
 }
