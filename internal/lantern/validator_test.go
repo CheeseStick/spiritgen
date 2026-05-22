@@ -28,20 +28,19 @@ func TestValidateAddress(t *testing.T) {
 func TestValidatePerson(t *testing.T) {
 	tests := []struct {
 		name     string
-		relation string
 		wantErrs int
 	}{
-		{"홍길동", "부친", 0},
-		{"홍길동", "", 1},
-		{"", "부친", 1},
-		{"", "", 2},
-		{"  ", "  ", 2},
+		{"홍길동", 0},
+		{" 홍길동 ", 0},
+		{"", 1},
+		{"  ", 1},
+		{"\t\n", 1},
 	}
 	for _, tt := range tests {
-		errs := lantern.ValidatePerson(tt.name, tt.relation)
+		errs := lantern.ValidatePerson(tt.name)
 		if len(errs) != tt.wantErrs {
-			t.Errorf("ValidatePerson(%q, %q) = %d errors, want %d",
-				tt.name, tt.relation, len(errs), tt.wantErrs)
+			t.Errorf("ValidatePerson(%q) = %d errors, want %d",
+				tt.name, len(errs), tt.wantErrs)
 		}
 	}
 }

@@ -37,22 +37,26 @@ func ParseXLSX(r io.Reader) (ParseResult, error) {
 		if i == 0 {
 			continue // header row
 		}
-		if len(row) < 3 {
+		if len(row) < 2 {
 			result.Errors = append(result.Errors, validation.RowError{
 				RowIndex: i + 1,
 				Errors: []validation.Error{{
 					Code:    ErrRowColumnTooShort,
 					Field:   "row",
-					Message: "입력 칸이 부족합니다 (4개 열 필요 - 주소|관계|이름|법명)",
+					Message: "입력 칸이 부족합니다 (4개 열 필요 - 주소|이름|관계|법명)",
 				}},
 			})
 			continue
 		}
 
 		address := xlsx.NormalizeString(row[0])
-		relation := xlsx.NormalizeString(row[1])
-		name := xlsx.NormalizeString(row[2])
+		name := xlsx.NormalizeString(row[1])
+		relation := ""
 		dharma := ""
+
+		if 3 <= len(row) {
+			relation = xlsx.NormalizeString(row[2])
+		}
 
 		if 4 <= len(row) {
 			dharma = xlsx.NormalizeString(row[3])

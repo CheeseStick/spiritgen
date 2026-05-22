@@ -19,7 +19,7 @@ func ValidateAddress(s string) []validation.Error {
 
 // ValidatePerson checks that name and relation are both present.
 // Dharma name is optional and not checked here.
-func ValidatePerson(name, relation string) []validation.Error {
+func ValidatePerson(name string) []validation.Error {
 	var errs []validation.Error
 	if xlsx.IsBlank(name) {
 		errs = append(errs, validation.Error{
@@ -28,12 +28,12 @@ func ValidatePerson(name, relation string) []validation.Error {
 			Message: "이름은 필수로 입력해야 합니다.",
 		})
 	}
-	if xlsx.IsBlank(relation) {
-		errs = append(errs, validation.Error{
-			Code:    ErrMissingRelation,
-			Field:   "relation",
-			Message: "관계는 필수로 입력해야 합니다.",
-		})
-	}
+	//if xlsx.IsBlank(relation) {
+	//	errs = append(errs, validation.Error{
+	//		Code:    ErrMissingRelation,
+	//		Field:   "relation",
+	//		Message: "관계는 필수로 입력해야 합니다.",
+	//	})
+	//}
 	return errs
 }
