@@ -2,9 +2,9 @@ package lantern
 
 import (
 	"io"
-
 	"spiritgen/internal/validation"
 	"spiritgen/internal/xlsx"
+	"strings"
 )
 
 // Recognized sheet names. Sheets not listed here are silently ignored.
@@ -229,6 +229,10 @@ func parseSpiritRows(rows [][]string) (households []SpiritHousehold, errs []vali
 			continue
 		}
 
+		if !strings.HasSuffix(name, "영가") {
+			name = name + " 영가" // auto-append "영가" for convenience, since it's implied in this sheet's context
+		}
+
 		if address != "" {
 			if current != nil {
 				households = append(households, *current)
@@ -248,6 +252,7 @@ func parseSpiritRows(rows [][]string) (households []SpiritHousehold, errs []vali
 			})
 			continue
 		}
+
 		current.Names = append(current.Names, name)
 	}
 
