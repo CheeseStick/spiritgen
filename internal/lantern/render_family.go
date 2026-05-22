@@ -6,61 +6,94 @@ import (
 	"spiritgen/internal/pdf"
 )
 
-// renderFamilySection lays out every 가족등 tablet, one per FamilyHousehold.
+// ─────────────── 가족등 per-page constants ───────────────
+// All title / address / member-row styling for 가족등 lives here.
+
+const (
+	// Address.
+	familyAddressFontStyle = "M"
+	familyAddressFontSize  = 12.0
+
+	// Member rows.
+	familyNamesSingleColumnMax = 5   // ≤N → 1 column; otherwise 2 columns
+	familyNamesColumnGap       = 3.0 // padding between the two columns
+	familyRelationNameGap      = 3.0 // horizontal gap between relation and name within a row
+	familyDharmaGap            = 2.0 // gap between name and dharma name
+	familyDharmaGapY           = 4.0 // vertical gap when single-person two-line layout is used
+)
+
+func familyFontSizeForCount(n int) PersonFontConfig {
+	switch {
+	case n == 1:
+		return PersonFontConfig{nameFontSize: 32.0, nameFontStyle: "M", dharmaNameFontSize: 24.0, dharmaNameFontStyle: "L"} // 1명
+	case n <= familyNamesSingleColumnMax:
+		return PersonFontConfig{nameFontSize: 16.0, nameFontStyle: "M", dharmaNameFontSize: 15.0, dharmaNameFontStyle: "L"} // 2~5명
+	default:
+		return PersonFontConfig{nameFontSize: 12.0, nameFontStyle: "M", dharmaNameFontSize: 12.0, dharmaNameFontStyle: "L"} // 6명+
+	}
+}
+
+// ─────────────── Renderers ───────────────
+
+// renderFamilySection lays out every 가족등 tablet using familyLayout.
 func renderFamilySection(doc *pdf.Doc, households []FamilyHousehold, title string) {
-	placeAndRender(doc, len(households), func(originX, originY float64, i int) {
-		renderFamilyTablet(doc, households[i], originX, originY, title)
+	familyLayout.placeAndRender(doc, len(households), func(originX, originY float64, i int) {
+		renderFamilyTablet(doc, &familyLayout, households[i], originX, originY, title)
 	})
 }
 
-func renderFamilyTablet(doc *pdf.Doc, h FamilyHousehold, originX, originY float64, title string) {
-	drawTabletBackground(doc, originX, originY)
+// renderFamilyTablet draws one FamilyHousehold tablet using the supplied
+// Layout (geometry) and the family-page constants above (styling).
+func renderFamilyTablet(doc *pdf.Doc, l *Layout, h FamilyHousehold, originX, originY float64, title string) {
+	l.drawTabletBackground(doc, originX, originY)
 
-	contentX := originX + tabletPaddingX
-	contentW := tabletSize - 2*tabletPaddingX
+	contentX := l.contentX(originX)
+	contentW := l.contentW()
 
-	currentY := drawTitle(doc, originX, originY, title)
-	currentY = drawAddress(doc, originX, currentY, h.Address)
+	// Title — top-anchored, skipped when empty.
+	currentY := originY + l.PaddingTop
+	if title != "" {
+		currentY = l.drawCenteredLine(doc, originX, currentY, title, l.titleFontStyle, l.titleFontSize) + l.titleBottomMargin
+	}
 
-	// Members block — vertically centered, clamped so it never overlaps the
-	// address line above.
-	cfg := fontSizeForCount(len(h.Members))
-	contentBottom := originY + tabletSize - tabletPaddingBottom
-	availableH := contentBottom - currentY
-	membersH := familyMembersHeight(h.Members, cfg)
+	// Address — top-anchored, right under the title.
+	currentY = l.drawCenteredLine(doc, originX, currentY, h.Address, familyAddressFontStyle, familyAddressFontSize)
+
+	// Members — vertically centered, clamped so it never overlaps the address.
+	cfg := familyFontSizeForCount(len(h.Members))
+	availableH := l.contentBottom(originY) - currentY
+	membersH := familyMembersHeight(l, h.Members, cfg)
 	membersTop := currentY + (availableH-membersH)/2
 	if membersTop < currentY {
 		membersTop = currentY
 	}
 
-	tabletBottom := originY + tabletSize
+	tabletBottom := l.tabletBottom(originY)
 	switch {
 	case len(h.Members) == 1:
-		renderSingleMember(doc, h.Members[0], cfg, contentX, contentW, membersTop)
-	case len(h.Members) <= namesSingleColumnMax:
-		// Single column: enough room to show dharma names too.
-		renderAlignedMemberColumn(doc, h.Members, cfg, contentX, membersTop, contentW, tabletBottom, true)
+		renderSingleMember(doc, l, h.Members[0], cfg, contentX, contentW, membersTop)
+	case len(h.Members) <= familyNamesSingleColumnMax:
+		renderAlignedMemberColumn(doc, l, h.Members, cfg, contentX, membersTop, contentW, tabletBottom, true)
 	default:
-		// Two columns: narrow per-column width — skip dharma to keep things readable.
 		half := (len(h.Members) + 1) / 2 // odd → left column carries the extra
-		colW := (contentW - namesColumnGap) / 2
-		renderAlignedMemberColumn(doc, h.Members[:half], cfg, contentX, membersTop, colW, tabletBottom, false)
-		renderAlignedMemberColumn(doc, h.Members[half:], cfg, contentX+colW+namesColumnGap, membersTop, colW, tabletBottom, false)
+		colW := (contentW - familyNamesColumnGap) / 2
+		renderAlignedMemberColumn(doc, l, h.Members[:half], cfg, contentX, membersTop, colW, tabletBottom, false)
+		renderAlignedMemberColumn(doc, l, h.Members[half:], cfg, contentX+colW+familyNamesColumnGap, membersTop, colW, tabletBottom, false)
 	}
 }
 
 // familyMembersHeight returns the vertical space the members block will
 // occupy. Address is laid out separately above the members.
-func familyMembersHeight(members []FamilyMember, cfg PersonFontConfig) float64 {
-	memberLH := lineHeightFor(cfg.nameFontSize)
+func familyMembersHeight(l *Layout, members []FamilyMember, cfg PersonFontConfig) float64 {
+	memberLH := l.lineHeightFor(cfg.nameFontSize)
 	switch {
 	case len(members) == 1:
 		total := memberLH
 		if members[0].DharmaName != "" {
-			total += lineHeightFor(cfg.dharmaNameFontSize)
+			total += l.lineHeightFor(cfg.dharmaNameFontSize)
 		}
 		return total
-	case len(members) <= namesSingleColumnMax:
+	case len(members) <= familyNamesSingleColumnMax:
 		return float64(len(members)) * memberLH
 	default:
 		rows := (len(members) + 1) / 2
@@ -71,19 +104,19 @@ func familyMembersHeight(members []FamilyMember, cfg PersonFontConfig) float64 {
 // renderSingleMember draws "relation name" (or just "name" when relation is
 // empty) centered on one line and, if present, the dharma name centered on
 // the next.
-func renderSingleMember(doc *pdf.Doc, m FamilyMember, cfg PersonFontConfig, contentX, contentW, y float64) {
-	doc.SetFont(labelFontName, cfg.nameFontStyle, cfg.nameFontSize)
-	nameLH := lineHeightFor(cfg.nameFontSize)
+func renderSingleMember(doc *pdf.Doc, l *Layout, m FamilyMember, cfg PersonFontConfig, contentX, contentW, y float64) {
+	doc.SetFont(l.LabelFontName, cfg.nameFontStyle, cfg.nameFontSize)
+	nameLH := l.lineHeightFor(cfg.nameFontSize)
 	text := m.Name
 	if m.Relation != "" {
 		text = fmt.Sprintf("%s %s", m.Relation, m.Name)
 	}
 	doc.DrawTextCentered(text, contentX, contentW, y+nameLH)
-	y += nameLH + dharmaGapY
+	y += nameLH + familyDharmaGapY
 
 	if m.DharmaName != "" {
-		doc.SetFont(labelFontName, cfg.dharmaNameFontStyle, cfg.dharmaNameFontSize)
-		dharmaLH := lineHeightFor(cfg.dharmaNameFontSize)
+		doc.SetFont(l.LabelFontName, cfg.dharmaNameFontStyle, cfg.dharmaNameFontSize)
+		dharmaLH := l.lineHeightFor(cfg.dharmaNameFontSize)
 		doc.DrawTextCentered(m.DharmaName, contentX, contentW, y+dharmaLH)
 	}
 }
@@ -95,15 +128,14 @@ func renderSingleMember(doc *pdf.Doc, m FamilyMember, cfg PersonFontConfig, cont
 // in the column box. Rows past tabletBottom are skipped.
 //
 // When showDharma is false, dharma names are omitted entirely.
-// When no member in the column has a relation, the relation column is
-// dropped (no gutter, no gap) and names are simply centered.
-func renderAlignedMemberColumn(doc *pdf.Doc, members []FamilyMember, cfg PersonFontConfig, boxX, y, boxWidth, tabletBottom float64, showDharma bool) {
-	memberLH := lineHeightFor(cfg.nameFontSize)
+// When no member has a relation, the relation column is dropped entirely.
+func renderAlignedMemberColumn(doc *pdf.Doc, l *Layout, members []FamilyMember, cfg PersonFontConfig, boxX, y, boxWidth, tabletBottom float64, showDharma bool) {
+	memberLH := l.lineHeightFor(cfg.nameFontSize)
 
 	// Pre-pass: measure each row's relation and name in the name font.
 	relW := make([]float64, len(members))
 	nameW := make([]float64, len(members))
-	doc.SetFont(labelFontName, cfg.nameFontStyle, cfg.nameFontSize)
+	doc.SetFont(l.LabelFontName, cfg.nameFontStyle, cfg.nameFontSize)
 	var maxRelW, maxNameW float64
 	for i, m := range members {
 		relW[i] = doc.GetStringWidth(m.Relation)
@@ -121,7 +153,7 @@ func renderAlignedMemberColumn(doc *pdf.Doc, members []FamilyMember, cfg PersonF
 	dharmaW := make([]float64, len(members))
 	var maxDharmaW float64
 	if showDharma {
-		doc.SetFont(labelFontName, cfg.dharmaNameFontStyle, cfg.dharmaNameFontSize)
+		doc.SetFont(l.LabelFontName, cfg.dharmaNameFontStyle, cfg.dharmaNameFontSize)
 		for i, m := range members {
 			if m.DharmaName == "" {
 				continue
@@ -135,11 +167,11 @@ func renderAlignedMemberColumn(doc *pdf.Doc, members []FamilyMember, cfg PersonF
 
 	rightSideW := maxNameW
 	if maxDharmaW > 0 {
-		rightSideW += dharmaGap + maxDharmaW
+		rightSideW += familyDharmaGap + maxDharmaW
 	}
 	totalW := maxRelW + rightSideW
 	if showRelation {
-		totalW += relationNameGap
+		totalW += familyRelationNameGap
 	}
 	startX := boxX + (boxWidth-totalW)/2
 	if startX < boxX {
@@ -149,7 +181,7 @@ func renderAlignedMemberColumn(doc *pdf.Doc, members []FamilyMember, cfg PersonF
 	var gutterX, nameStartX float64
 	if showRelation {
 		gutterX = startX + maxRelW
-		nameStartX = gutterX + relationNameGap
+		nameStartX = gutterX + familyRelationNameGap
 	} else {
 		nameStartX = startX
 	}
@@ -159,15 +191,15 @@ func renderAlignedMemberColumn(doc *pdf.Doc, members []FamilyMember, cfg PersonF
 			break
 		}
 		if showRelation && m.Relation != "" {
-			doc.SetFont(labelFontName, cfg.nameFontStyle, cfg.nameFontSize)
+			doc.SetFont(l.LabelFontName, cfg.nameFontStyle, cfg.nameFontSize)
 			doc.Text(gutterX-relW[i], y+memberLH, m.Relation)
 		}
-		doc.SetFont(labelFontName, cfg.nameFontStyle, cfg.nameFontSize)
+		doc.SetFont(l.LabelFontName, cfg.nameFontStyle, cfg.nameFontSize)
 		doc.Text(nameStartX, y+memberLH, m.Name)
 		if showDharma && m.DharmaName != "" {
-			dharmaX := nameStartX + nameW[i] + dharmaGap
+			dharmaX := nameStartX + nameW[i] + familyDharmaGap
 			if dharmaX+dharmaW[i] <= boxX+boxWidth {
-				doc.SetFont(labelFontName, cfg.dharmaNameFontStyle, cfg.dharmaNameFontSize)
+				doc.SetFont(l.LabelFontName, cfg.dharmaNameFontStyle, cfg.dharmaNameFontSize)
 				doc.Text(dharmaX, y+memberLH, m.DharmaName)
 			}
 		}
