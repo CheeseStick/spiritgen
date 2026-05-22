@@ -29,6 +29,7 @@ type uiState struct {
 	tablets        []SpiritTablet
 	personCount    int
 	selectedDesign []byte
+	logPane        *gui.LogPane // nil-safe (e.g. in tests)
 }
 
 // tab is the GUI tab for the spirit-tablet product. It satisfies gui.Tab.
@@ -142,6 +143,8 @@ func (t *tab) Build(win fyne.Window) fyne.CanvasObject {
 		showSaveDialog(state, readBtn, generateBtn, progressBar, win)
 	}
 
+	state.logPane = gui.NewLogPane()
+
 	fileRow := container.NewBorder(nil, nil, nil, browseBtn, pathEntry)
 	form := widget.NewForm(
 		widget.NewFormItem("파일", fileRow),
@@ -157,6 +160,7 @@ func (t *tab) Build(win fyne.Window) fyne.CanvasObject {
 		statusLabel,
 		progressBar,
 		actionRow,
+		state.logPane.Widget(),
 	)
 
 	return container.NewPadded(content)
@@ -250,8 +254,13 @@ func DoRead(state *uiState, generateBtn *widget.Button, win fyne.Window) {
 		return
 	}
 
+	// Reset the log pane for a fresh read.
+	state.logPane.Clear()
+	state.logPane.Append(fmt.Sprintf("📂 %s", state.xlsxPath))
+
 	f, err := os.Open(state.xlsxPath)
 	if err != nil {
+		state.logPane.Append(fmt.Sprintf("❌ 파일을 열 수 없습니다: %v", err))
 		dialog.ShowError(fmt.Errorf("파일을 열 수 없습니다: %w", err), win)
 		return
 	}
@@ -259,12 +268,22 @@ func DoRead(state *uiState, generateBtn *widget.Button, win fyne.Window) {
 
 	result, err := ParseXLSX(f)
 	if err != nil {
+		state.logPane.Append(fmt.Sprintf("❌ XLSX 파싱 실패: %v", err))
 		dialog.ShowError(fmt.Errorf("XLSX 파싱 실패: %w", err), win)
 		return
 	}
 
+	// Always log per-row errors first — so the user can see WHY rows failed
+	// even when nothing valid was parsed.
+	for _, rowErr := range result.Errors {
+		for _, e := range rowErr.Errors {
+			state.logPane.Append(fmt.Sprintf("⚠️ 행 %d: %s [%s]", rowErr.RowIndex, e.Message, e.Code))
+		}
+	}
+
 	if len(result.Success) == 0 {
-		dialog.ShowError(fmt.Errorf("유효한 데이터가 없습니다"), win)
+		state.logPane.Append(fmt.Sprintf("❌ 유효한 데이터가 없습니다 (오류 %d행)", len(result.Errors)))
+		dialog.ShowError(fmt.Errorf("유효한 데이터가 없습니다 (오류 %d행)", len(result.Errors)), win)
 		return
 	}
 
@@ -281,6 +300,9 @@ func DoRead(state *uiState, generateBtn *widget.Button, win fyne.Window) {
 	state.parseResult = &result
 	state.tablets = tablets
 	state.personCount = personCount
+
+	state.logPane.Append(fmt.Sprintf("✓ %d명 로드 · %d장 (오류 %d행)",
+		personCount, len(tablets), len(result.Errors)))
 
 	if len(result.Errors) > 0 {
 		showRowErrorWarning(result.Errors, win)

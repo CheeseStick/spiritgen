@@ -62,7 +62,7 @@ func ParseXLSX(r io.Reader) (ParseResult, error) {
 		if address != "" {
 			rowErrors = append(rowErrors, ValidateAddress(address)...)
 		}
-		rowErrors = append(rowErrors, ValidatePerson(name, relation)...)
+		rowErrors = append(rowErrors, ValidatePerson(name)...)
 
 		if len(rowErrors) > 0 {
 			result.Errors = append(result.Errors, validation.RowError{
