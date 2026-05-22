@@ -14,14 +14,14 @@ type ParseResult struct {
 }
 
 // ParseXLSX reads the first sheet of an XLSX document and groups rows into
-// Households. The expected schema is a 4-column row:
+// Households. The expected schema is:
 //
-//	[ address (주소) | relation (관계) | name (이름) | dharma_name (법명) ]
+//	[ address (주소) | name (이름) | relation (관계, optional) | dharma_name (법명, optional) ]
 //
-// The address column is optional after the first row of a group: empty address
-// means the row belongs to the previous household. Unlike spirit tablets,
-// households are not split — every person of a household must fit on a single
-// lantern tablet.
+// Required: address (only on the first row of each household), name.
+// Optional: relation, dharma_name. A row with an empty address column belongs
+// to the previous household. Unlike spirit tablets, households are not split —
+// every person of a household must fit on a single lantern tablet.
 func ParseXLSX(r io.Reader) (ParseResult, error) {
 	rows, err := xlsx.ReadFirstSheet(r)
 	if err != nil {

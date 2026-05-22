@@ -129,13 +129,16 @@ func personsContentHeight(h Household, cfg PersonFontConfig) float64 {
 	}
 }
 
-// renderSinglePerson draws "relation name" centered on one line and, if
-// present, the dharma name centered on the next, all within the content box
-// (contentX, contentX+contentW).
+// renderSinglePerson draws "relation name" (or just "name" when relation is
+// empty) centered on one line and, if present, the dharma name centered on
+// the next, all within the content box (contentX, contentX+contentW).
 func renderSinglePerson(doc *pdf.Doc, p Person, cfg PersonFontConfig, contentX, contentW, y float64) {
 	doc.SetFont(labelFontName, cfg.nameFontStyle, cfg.nameFontSize)
 	nameLH := lineHeightFor(cfg.nameFontSize)
-	text := fmt.Sprintf("%s %s", p.Relation, p.Name)
+	text := p.Name
+	if p.Relation != "" {
+		text = fmt.Sprintf("%s %s", p.Relation, p.Name)
+	}
 	doc.DrawTextCentered(text, contentX, contentW, y+nameLH)
 	y += nameLH + dharmaGapY
 
@@ -154,6 +157,9 @@ func renderSinglePerson(doc *pdf.Doc, p Person, cfg PersonFontConfig, contentX, 
 //
 // When showDharma is false, dharma names are omitted entirely (no measurement,
 // no rendering) — useful for narrow 2-column layouts where space is tight.
+//
+// When NO person in the column has a relation, the relation column is dropped
+// entirely (no gutter, no gap) and names are simply centered.
 func renderAlignedColumn(doc *pdf.Doc, persons []Person, cfg PersonFontConfig, boxX, y, boxWidth, tabletBottom float64, showDharma bool) {
 	personLH := lineHeightFor(cfg.nameFontSize)
 
@@ -172,6 +178,7 @@ func renderAlignedColumn(doc *pdf.Doc, persons []Person, cfg PersonFontConfig, b
 			maxNameW = nameW[i]
 		}
 	}
+	showRelation := maxRelW > 0
 
 	// Optionally measure dharma names in the dharma font.
 	dharmaW := make([]float64, len(persons))
@@ -194,22 +201,37 @@ func renderAlignedColumn(doc *pdf.Doc, persons []Person, cfg PersonFontConfig, b
 	if maxDharmaW > 0 {
 		rightSideW += dharmaGap + maxDharmaW
 	}
-	totalW := maxRelW + relationNameGap + rightSideW
+	totalW := maxRelW + rightSideW
+	if showRelation {
+		totalW += relationNameGap
+	}
 	startX := boxX + (boxWidth-totalW)/2
 	if startX < boxX {
 		startX = boxX // clamp if totalW > boxWidth
 	}
-	gutterX := startX + maxRelW             // right edge of the relation column
-	nameStartX := gutterX + relationNameGap // left edge of the name column
+
+	// When no relation: names start at startX directly.
+	// When some/all relations: gutter at startX+maxRelW, names after the gap.
+	var gutterX, nameStartX float64
+	if showRelation {
+		gutterX = startX + maxRelW
+		nameStartX = gutterX + relationNameGap
+	} else {
+		nameStartX = startX
+	}
 
 	for i, p := range persons {
 		if y+personLH > tabletBottom {
 			break
 		}
-		// Relation — right-aligned to gutterX
-		doc.SetFont(labelFontName, cfg.nameFontStyle, cfg.nameFontSize)
-		doc.Text(gutterX-relW[i], y+personLH, p.Relation)
+		// Relation — right-aligned to gutterX (skipped if no one in household
+		// has a relation, or this specific row's relation is blank).
+		if showRelation && p.Relation != "" {
+			doc.SetFont(labelFontName, cfg.nameFontStyle, cfg.nameFontSize)
+			doc.Text(gutterX-relW[i], y+personLH, p.Relation)
+		}
 		// Name — left-aligned at nameStartX
+		doc.SetFont(labelFontName, cfg.nameFontStyle, cfg.nameFontSize)
 		doc.Text(nameStartX, y+personLH, p.Name)
 		// Dharma — beside the name (only when enabled and it fits)
 		if showDharma && p.DharmaName != "" {
