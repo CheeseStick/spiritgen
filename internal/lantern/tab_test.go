@@ -41,6 +41,9 @@ func TestReadWithInvalidPathKeepsButtonDisabled(t *testing.T) {
 	if state.householdCount != 0 {
 		t.Error("expected householdCount to remain 0 after failed read")
 	}
+	if state.parseResult != nil {
+		t.Error("expected parseResult to remain nil after failed read")
+	}
 }
 
 func TestReadWithEmptyPathKeepsButtonDisabled(t *testing.T) {

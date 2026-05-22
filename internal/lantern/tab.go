@@ -8,7 +8,6 @@ import (
 
 	"spiritgen/assets"
 	"spiritgen/internal/gui"
-	"spiritgen/internal/validation"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -26,7 +25,6 @@ const (
 type uiState struct {
 	xlsxPath       string
 	parseResult    *ParseResult
-	households     []Household
 	householdCount int
 	personCount    int
 	selectedDesign []byte
@@ -224,8 +222,14 @@ func showSaveDialog(state *uiState, readBtn, generateBtn *widget.Button, progres
 		title := state.title
 
 		doRender := func() {
+			if state.parseResult == nil {
+				restoreButtons()
+				dialog.ShowError(fmt.Errorf("먼저 파일을 읽어주세요"), win)
+				return
+			}
+			result := *state.parseResult
 			go func() {
-				renderErr := RenderPDF(state.households, outputPath, design, title)
+				renderErr := RenderPDF(result, outputPath, design, title)
 				restoreButtons()
 				if renderErr != nil {
 					dialog.ShowError(renderErr, win)
@@ -280,42 +284,42 @@ func DoRead(state *uiState, generateBtn *widget.Button, win fyne.Window) {
 	}
 
 	// Always log per-row errors first — so the user can see WHY rows failed
-	// even when nothing valid was parsed.
-	for _, rowErr := range result.Errors {
-		for _, e := range rowErr.Errors {
-			state.logPane.Append(fmt.Sprintf("⚠️ 행 %d: %s [%s]", rowErr.RowIndex, e.Message, e.Code))
+	// even when nothing valid was parsed. Iterate sheets in a stable order so
+	// the log output is deterministic.
+	totalErrs := result.TotalErrorCount()
+	for _, sheetName := range []string{SheetBig, SheetFamily, SheetSpirit, SheetBusiness} {
+		for _, rowErr := range result.Errors[sheetName] {
+			for _, e := range rowErr.Errors {
+				state.logPane.Append(fmt.Sprintf("⚠️ [%s] 행 %d: %s [%s]",
+					sheetName, rowErr.RowIndex, e.Message, e.Code))
+			}
 		}
 	}
 
-	if len(result.Success) == 0 {
-		state.logPane.Append(fmt.Sprintf("❌ 유효한 데이터가 없습니다 (오류 %d행)", len(result.Errors)))
-		dialog.ShowError(fmt.Errorf("유효한 데이터가 없습니다 (오류 %d행)", len(result.Errors)), win)
+	totalHouseholds := result.TotalHouseholdCount()
+	totalPersons := result.TotalPersonCount()
+
+	if totalHouseholds == 0 {
+		state.logPane.Append(fmt.Sprintf("❌ 유효한 데이터가 없습니다 (오류 %d행)", totalErrs))
+		dialog.ShowError(fmt.Errorf("유효한 데이터가 없습니다 (오류 %d행)", totalErrs), win)
 		return
 	}
 
-	personCount := 0
-	for _, h := range result.Success {
-		personCount += len(h.Persons)
-	}
-
 	state.parseResult = &result
-	state.households = result.Success
-	state.householdCount = len(result.Success)
-	state.personCount = personCount
+	state.householdCount = totalHouseholds
+	state.personCount = totalPersons
 
-	state.logPane.Append(fmt.Sprintf("✓ %d세대 · %d명 로드 완료 (오류 %d행)",
-		state.householdCount, personCount, len(result.Errors)))
+	state.logPane.Append(fmt.Sprintf(
+		"✓ 큰등 %d · 가족등 %d · 영가등 %d · 사업등 %d (총 %d세대 · %d명, 오류 %d행)",
+		len(result.Big), len(result.Family), len(result.Spirit), len(result.Business),
+		totalHouseholds, totalPersons, totalErrs))
 
-	if len(result.Errors) > 0 {
-		showRowErrorWarning(result.Errors, win)
+	if totalErrs > 0 {
+		dialog.ShowInformation("경고",
+			fmt.Sprintf("%d개 행에서 오류가 발생했습니다. 무시하고 진행합니다.", totalErrs), win)
 	}
 
 	generateBtn.Enable()
-	dialog.ShowInformation("읽기 완료", fmt.Sprintf("%d세대 · %d명을 읽었습니다.", state.householdCount, personCount), win)
-}
-
-func showRowErrorWarning(errs []validation.RowError, win fyne.Window) {
-	dialog.ShowInformation("경고",
-		fmt.Sprintf("%d개 행에서 오류가 발생했습니다. 무시하고 진행합니다.", len(errs)),
-		win)
+	dialog.ShowInformation("읽기 완료",
+		fmt.Sprintf("%d세대 · %d명을 읽었습니다.", totalHouseholds, totalPersons), win)
 }

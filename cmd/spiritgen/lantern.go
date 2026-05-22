@@ -43,11 +43,21 @@ func runLantern(args []string) {
 		log.Fatalf("❌ XLSX 파일을 로드하는데 실패했습니다: %v", err)
 	}
 
-	if 0 < len(result.Errors) {
-		log.Printf("⚠️ 일부 행에서 유효성 오류가 발생했습니다 (%d개). 무시하고 진행합니다.", len(result.Errors))
+	// Log per-row errors (per sheet) before deciding whether to proceed.
+	totalErrs := result.TotalErrorCount()
+	for _, sheetName := range []string{lantern.SheetBig, lantern.SheetFamily, lantern.SheetSpirit, lantern.SheetBusiness} {
+		for _, rowErr := range result.Errors[sheetName] {
+			for _, e := range rowErr.Errors {
+				log.Printf("⚠️ [%s] 행 %d: %s [%s]", sheetName, rowErr.RowIndex, e.Message, e.Code)
+			}
+		}
+	}
+	if totalErrs > 0 {
+		log.Printf("⚠️ 일부 행에서 유효성 오류가 발생했습니다 (%d개). 무시하고 진행합니다.", totalErrs)
 	}
 
-	if len(result.Success) == 0 {
+	totalHouseholds := result.TotalHouseholdCount()
+	if totalHouseholds == 0 {
 		log.Fatalf("❌ 처리 할 세대 데이터가 없습니다.")
 	}
 
@@ -56,9 +66,10 @@ func runLantern(args []string) {
 		outputPath = filepath.Join(filepath.Dir(inputPath), outputPath)
 	}
 
-	if err := lantern.RenderPDF(result.Success, outputPath, assets.LanternTabletDesignOne, *titleFlag); err != nil {
+	if err := lantern.RenderPDF(result, outputPath, assets.LanternTabletDesignOne, *titleFlag); err != nil {
 		log.Fatalf("❌ PDF 생성 실패: %v", err)
 	}
 
-	fmt.Printf("✅ PDF가 성공적으로 생성되었습니다: %s (%d세대)\n", outputPath, len(result.Success))
+	fmt.Printf("✅ PDF가 성공적으로 생성되었습니다: %s (큰등 %d · 가족등 %d · 영가등 %d · 사업등 %d)\n",
+		outputPath, len(result.Big), len(result.Family), len(result.Spirit), len(result.Business))
 }

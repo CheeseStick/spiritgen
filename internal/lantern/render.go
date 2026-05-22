@@ -1,30 +1,53 @@
 package lantern
 
 import (
-	"fmt"
-
 	"spiritgen/assets"
 	"spiritgen/internal/pdf"
 )
 
-// RenderPDF writes the given households as a multi-page lantern tablet PDF at
-// outputPath, using bgImage (PNG bytes) as the per-tablet background. title is
-// rendered at the top center of every tablet — if empty, the title line is
-// skipped.
-func RenderPDF(households []Household, outputPath string, bgImage []byte, title string) error {
+// RenderPDF writes every lantern kind in result as a single PDF at outputPath.
+// Each kind that has at least one household starts on a fresh page. title is
+// rendered at the top of every tablet; empty title falls back to defaultTitle.
+//
+// bgImage is the per-tablet background PNG; for now the same image is used
+// for every kind. Per-kind backgrounds can be plumbed through later.
+func RenderPDF(result ParseResult, outputPath string, bgImage []byte, title string) error {
 	if title == "" {
 		title = defaultTitle
 	}
 
 	doc := pdf.NewA4Landscape(a4PaperMarginX, a4PaperMarginY)
-	// We only ship one TTF (NotoSerifKR-Black). Register it under both "B" and
-	// "" so SetFont calls with either style resolve to the same bytes.
 	doc.RegisterUTF8Font(labelFontName, "B", assets.FontNotoSerifKR)
 	doc.RegisterUTF8Font(labelFontName, "M", assets.FontNotoSerifKRMedium)
 	doc.RegisterUTF8Font(labelFontName, "L", assets.FontNotoSerifKRLight)
 	doc.RegisterPNGImage(backgroundImageKey, bgImage)
-	doc.AddPage()
 
+	// Each non-empty section starts on its own page.
+	if len(result.Big) > 0 {
+		doc.AddPage()
+		renderBigSection(doc, result.Big, title)
+	}
+	if len(result.Family) > 0 {
+		doc.AddPage()
+		renderFamilySection(doc, result.Family, title)
+	}
+	if len(result.Spirit) > 0 {
+		doc.AddPage()
+		renderSpiritSection(doc, result.Spirit, title)
+	}
+	if len(result.Business) > 0 {
+		doc.AddPage()
+		renderBusinessSection(doc, result.Business, title)
+	}
+
+	return doc.OutputFileAndClose(outputPath)
+}
+
+// placeAndRender runs the standard "place tablets left-to-right, wrap to next
+// row, wrap to next page" cursor loop. The renderOne callback draws a single
+// tablet at the given (x, y). Shared by every section so per-kind functions
+// only need to supply their tablet-drawing closure.
+func placeAndRender(doc *pdf.Doc, count int, renderOne func(originX, originY float64, i int)) {
 	pageWidth, pageHeight := doc.GetPageSize()
 	leftMargin, topMargin, rightMargin, bottomMargin := doc.GetMargins()
 	pageRight := pageWidth - rightMargin
@@ -33,7 +56,7 @@ func RenderPDF(households []Household, outputPath string, bgImage []byte, title 
 	cursorX := leftMargin
 	cursorY := topMargin
 
-	for _, h := range households {
+	for i := 0; i < count; i++ {
 		if cursorX+tabletSize > pageRight {
 			cursorX = leftMargin
 			cursorY += tabletSize + tabletMarginY
@@ -43,204 +66,58 @@ func RenderPDF(households []Household, outputPath string, bgImage []byte, title 
 			cursorX = leftMargin
 			cursorY = topMargin
 		}
-
-		renderTablet(doc, h, cursorX, cursorY, title)
+		renderOne(cursorX, cursorY, i)
 		cursorX += tabletSize + tabletMarginX
 	}
-
-	return doc.OutputFileAndClose(outputPath)
 }
 
-func renderTablet(doc *pdf.Doc, h Household, originX, originY float64, title string) {
-	// 1) Background image
+// drawTabletBackground draws the background image (aspect-fit, centered) and
+// then the circular cut-guideline on top. Shared by every per-kind renderer.
+func drawTabletBackground(doc *pdf.Doc, originX, originY float64) {
 	bgOffset := (tabletSize - backgroundSize) / 2
 	doc.DrawImageAspectFit(backgroundImageKey,
 		originX+bgOffset, originY+bgOffset, backgroundSize, backgroundSize)
 
-	// 2) Circle cut-guideline outline (drawn on top of background image)
 	prevLW := doc.GetLineWidth()
 	doc.SetLineWidth(circleLineWidth)
 	doc.Circle(originX+tabletSize/2, originY+tabletSize/2, tabletSize/2, "D")
 	doc.SetLineWidth(prevLW)
+}
 
-	// Content area (inside the horizontal padding).
-	contentX := originX + tabletPaddingX
-	contentW := tabletSize - 2*tabletPaddingX
-
-	// 3) Title
-	currentY := originY + tabletPaddingTop
-	if title != "" {
-		doc.SetFont(labelFontName, titleFontStyle, titleFontSize)
-		titleLH := lineHeightFor(titleFontSize)
-		doc.DrawTextCentered(title, contentX, contentW, currentY+titleLH)
-		currentY += titleLH + titleBottomMargin
+// drawTitle draws the (centered) title at the top of the tablet and returns
+// the Y position where the next line of content should begin.
+func drawTitle(doc *pdf.Doc, originX, originY float64, title string) float64 {
+	y := originY + tabletPaddingTop
+	if title == "" {
+		return y
 	}
+	doc.SetFont(labelFontName, titleFontStyle, titleFontSize)
+	titleLH := lineHeightFor(titleFontSize)
+	doc.DrawTextCentered(title, originX+tabletPaddingX, tabletSize-2*tabletPaddingX, y+titleLH)
+	return y + titleLH + titleBottomMargin
+}
 
-	// 4) Address
+// drawAddress draws the (centered) address and returns the Y position where
+// the next line of content should begin.
+func drawAddress(doc *pdf.Doc, originX, y float64, address string) float64 {
 	doc.SetFont(labelFontName, addressFontStyle, addressFontSize)
 	addressLH := lineHeightFor(addressFontSize)
-	doc.DrawTextCentered(h.Address, contentX, contentW, currentY+addressLH)
-	currentY += addressLH
-
-	// 5) Persons
-	personFontConfig := fontSizeForCount(len(h.Persons))
-	contentBottom := originY + tabletSize - tabletPaddingBottom
-	availableH := contentBottom - currentY
-	personsH := personsContentHeight(h, personFontConfig)
-	personsTop := currentY + (availableH-personsH)/2
-	if personsTop < currentY {
-		personsTop = currentY
-	}
-
-	tabletBottom := originY + tabletSize
-	switch {
-	case len(h.Persons) == 1:
-		renderSinglePerson(doc, h.Persons[0], personFontConfig, contentX, contentW, personsTop)
-	case len(h.Persons) <= namesSingleColumnMax:
-		// Single column has plenty of room — render dharma names too.
-		renderAlignedColumn(doc, h.Persons, personFontConfig, contentX, personsTop, contentW, tabletBottom, true)
-	default:
-		// Two columns: narrow per-column width — skip dharma to keep relation/
-		// name comfortably spaced.
-		half := (len(h.Persons) + 1) / 2 // odd → left column carries the extra
-		colW := (contentW - namesColumnGap) / 2
-		renderAlignedColumn(doc, h.Persons[:half], personFontConfig, contentX, personsTop, colW, tabletBottom, false)
-		renderAlignedColumn(doc, h.Persons[half:], personFontConfig, contentX+colW+namesColumnGap, personsTop, colW, tabletBottom, false)
-	}
+	doc.DrawTextCentered(address, originX+tabletPaddingX, tabletSize-2*tabletPaddingX, y+addressLH)
+	return y + addressLH
 }
 
-// personsContentHeight returns the vertical space the persons block will
-// occupy for the given household. Used to position the block vertically.
-// Address is not included — it is laid out separately above the persons.
-func personsContentHeight(h Household, cfg PersonFontConfig) float64 {
-	personLH := lineHeightFor(cfg.nameFontSize)
-	switch {
-	case len(h.Persons) == 1:
-		total := personLH
-		if h.Persons[0].DharmaName != "" {
-			total += lineHeightFor(cfg.dharmaNameFontSize)
-		}
-		return total
-	case len(h.Persons) <= namesSingleColumnMax:
-		return float64(len(h.Persons)) * personLH
-	default:
-		rows := (len(h.Persons) + 1) / 2
-		return float64(rows) * personLH
-	}
-}
-
-// renderSinglePerson draws "relation name" (or just "name" when relation is
-// empty) centered on one line and, if present, the dharma name centered on
-// the next, all within the content box (contentX, contentX+contentW).
-func renderSinglePerson(doc *pdf.Doc, p Person, cfg PersonFontConfig, contentX, contentW, y float64) {
+// renderCenteredNameList draws each name centered horizontally within the
+// box (boxX, boxX+boxWidth) on its own line. Used by 영가등 / 사업등 where
+// each entry is just a name (no relation/dharma). Lines past tabletBottom
+// are skipped.
+func renderCenteredNameList(doc *pdf.Doc, names []string, cfg PersonFontConfig, boxX, y, boxWidth, tabletBottom float64) {
 	doc.SetFont(labelFontName, cfg.nameFontStyle, cfg.nameFontSize)
-	nameLH := lineHeightFor(cfg.nameFontSize)
-	text := p.Name
-	if p.Relation != "" {
-		text = fmt.Sprintf("%s %s", p.Relation, p.Name)
-	}
-	doc.DrawTextCentered(text, contentX, contentW, y+nameLH)
-	y += nameLH + dharmaGapY
-
-	if p.DharmaName != "" {
-		doc.SetFont(labelFontName, cfg.dharmaNameFontStyle, cfg.dharmaNameFontSize)
-		dharmaLH := lineHeightFor(cfg.dharmaNameFontSize)
-		doc.DrawTextCentered(p.DharmaName, contentX, contentW, y+dharmaLH)
-	}
-}
-
-// renderAlignedColumn draws persons as a "relation | name [dharma]" table
-// within the column box (boxX, boxX+boxWidth). All rows share the same gutter
-// so that the relation→name gap is constant across rows. The widest row
-// determines the gutter position, and the assembly is horizontally centered
-// in the column box. Rows past tabletBottom are skipped.
-//
-// When showDharma is false, dharma names are omitted entirely (no measurement,
-// no rendering) — useful for narrow 2-column layouts where space is tight.
-//
-// When NO person in the column has a relation, the relation column is dropped
-// entirely (no gutter, no gap) and names are simply centered.
-func renderAlignedColumn(doc *pdf.Doc, persons []Person, cfg PersonFontConfig, boxX, y, boxWidth, tabletBottom float64, showDharma bool) {
-	personLH := lineHeightFor(cfg.nameFontSize)
-
-	// Pre-pass: measure each row's relation and name in the name font.
-	relW := make([]float64, len(persons))
-	nameW := make([]float64, len(persons))
-	doc.SetFont(labelFontName, cfg.nameFontStyle, cfg.nameFontSize)
-	var maxRelW, maxNameW float64
-	for i, p := range persons {
-		relW[i] = doc.GetStringWidth(p.Relation)
-		nameW[i] = doc.GetStringWidth(p.Name)
-		if relW[i] > maxRelW {
-			maxRelW = relW[i]
-		}
-		if nameW[i] > maxNameW {
-			maxNameW = nameW[i]
-		}
-	}
-	showRelation := maxRelW > 0
-
-	// Optionally measure dharma names in the dharma font.
-	dharmaW := make([]float64, len(persons))
-	var maxDharmaW float64
-	if showDharma {
-		doc.SetFont(labelFontName, cfg.dharmaNameFontStyle, cfg.dharmaNameFontSize)
-		for i, p := range persons {
-			if p.DharmaName == "" {
-				continue
-			}
-			dharmaW[i] = doc.GetStringWidth(p.DharmaName)
-			if dharmaW[i] > maxDharmaW {
-				maxDharmaW = dharmaW[i]
-			}
-		}
-	}
-
-	// Center the widest-row assembly within the column box.
-	rightSideW := maxNameW
-	if maxDharmaW > 0 {
-		rightSideW += dharmaGap + maxDharmaW
-	}
-	totalW := maxRelW + rightSideW
-	if showRelation {
-		totalW += relationNameGap
-	}
-	startX := boxX + (boxWidth-totalW)/2
-	if startX < boxX {
-		startX = boxX // clamp if totalW > boxWidth
-	}
-
-	// When no relation: names start at startX directly.
-	// When some/all relations: gutter at startX+maxRelW, names after the gap.
-	var gutterX, nameStartX float64
-	if showRelation {
-		gutterX = startX + maxRelW
-		nameStartX = gutterX + relationNameGap
-	} else {
-		nameStartX = startX
-	}
-
-	for i, p := range persons {
-		if y+personLH > tabletBottom {
+	lh := lineHeightFor(cfg.nameFontSize)
+	for _, name := range names {
+		if y+lh > tabletBottom {
 			break
 		}
-		// Relation — right-aligned to gutterX (skipped if no one in household
-		// has a relation, or this specific row's relation is blank).
-		if showRelation && p.Relation != "" {
-			doc.SetFont(labelFontName, cfg.nameFontStyle, cfg.nameFontSize)
-			doc.Text(gutterX-relW[i], y+personLH, p.Relation)
-		}
-		// Name — left-aligned at nameStartX
-		doc.SetFont(labelFontName, cfg.nameFontStyle, cfg.nameFontSize)
-		doc.Text(nameStartX, y+personLH, p.Name)
-		// Dharma — beside the name (only when enabled and it fits)
-		if showDharma && p.DharmaName != "" {
-			dharmaX := nameStartX + nameW[i] + dharmaGap
-			if dharmaX+dharmaW[i] <= boxX+boxWidth {
-				doc.SetFont(labelFontName, cfg.dharmaNameFontStyle, cfg.dharmaNameFontSize)
-				doc.Text(dharmaX, y+personLH, p.DharmaName)
-			}
-		}
-		y += personLH
+		doc.DrawTextCentered(name, boxX, boxWidth, y+lh)
+		y += lh
 	}
 }
